@@ -174,12 +174,8 @@ Copy it into the `examples` directory and then you can unpack it in vagrant:
 `vagrant ssh`:
 
     cd /tmp
-    # 636MB
     wget http://mirror.umd.edu/centos/7/isos/x86_64/CentOS-7-x86_64-DVD-1503-01.iso
-    # NOTE: boot failure on this attempts to load a product.img which doesn't exist, drops into Dracut
-    # trying the full 4GB ISO download
     # 4GB
-    wget http://buildlogs.centos.org/rolling/7/isos/x86_64/CentOS-7-x86_64-DVD.iso
     sudo python ~/src/on-http/data/templates/setup_iso.py /tmp/CentOS-7-x86_64-Minimal.iso /var/mirrors --link=/home/vagrant/src
 
 Mirror down the CentOS 7 packages for remote installation
