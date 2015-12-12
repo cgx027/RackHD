@@ -178,7 +178,7 @@ Copy it into the `examples` directory and then you can unpack it in vagrant:
     # 4GB
     sudo python ~/src/on-http/data/templates/setup_iso.py /tmp/CentOS-7-x86_64-Minimal.iso /var/mirrors --link=/home/vagrant/src
 
-Mirror down the CentOS 7 packages for remote installation
+### Mirror down the CentOS 7 packages for remote installation
 
 __this doesn't work inside EMC due to port 22 blocks__
 
@@ -190,7 +190,6 @@ __this doesn't work inside EMC due to port 22 blocks__
     --exclude "i386" rsync://centos.eecs.wsu.edu/centos/7/ /var/mirrors/centos/7
 
 
-
 And then invoking the workflow to install CentOS you just unpacked
 
     cd ~/src/rackhd/example
@@ -200,11 +199,11 @@ And then invoking the workflow to install CentOS you just unpacked
     -X POST --data @samples/centos_iso_boot.json \
     http://localhost:9090/api/1.1/nodes/566af6c77c5de76d1530d1f3/workflows | python -m json.tool
 
-**NOTE** because you're working with a Virtualbox VM, there's no out of band
-management to trigger the machine to reboot, so once the workflow has been
-activated, the VM will need to be rebooted manually for the workflow to take effect.
 
-
+**NOTE** because this demonstration setup uses Virtualbox, there is no out
+of band management to trigger the machine to reboot. Once the workflow
+has been activated, the VM will need to be rebooted manually for the
+workflow to operate.
 
 ## HACKING THESE SCRIPTS
 
