@@ -3,18 +3,20 @@ import re
 import datetime
 import json
 
+# Log files to be parsed
 filename_atop = "cpu_mem_net_disk.log"
 filename_process = "pid.log"
 filename_caseinfo = "case_info.log"
 filename_summary = "summary.log"
-filename_summary_js = "summary.js"
 filename_mongo_document = "mongo_document.log"
-filename_mongo_document_js = "mongo_document.js"
 filename_mongo_disk = "mongo_disk.log"
 
-EXPECTED_COLUMN_CNT = 15
+# Generated output files that will be used by front-end code
+filename_summary_js = "summary.js"
+filename_mongo_document_js = "mongo_document.js"
 
-LINE_COL = [
+# The column line definition on the atop log file
+ATOP_LINE_COL = [
     "PID",
     "SYSCPU",
     "USRCPU",
@@ -31,7 +33,8 @@ LINE_COL = [
     "CPU"
 ]
 
-MATRIX_COL = [
+# The matrix that can be parsed from atop log file
+ATOP_MATRIX = [
     "SYSCPU",
     "USRCPU",
     "VSIZE",
@@ -45,31 +48,84 @@ MATRIX_COL = [
     "CPU"
 ]
 
-MONGO_COL = [
+# The matrix that can be parsed from mongo document log file
+MONGO_DOCUMENT_MATRIX = [
     "dataSize",
     "storageSize"
 ]
 
+# Parser for mongo document log file.
+# The log file look like:
+#
+# {
+# 	"dataSize" : 6286556,
+# 	"storageSize" : 12083200,
+# }
+# {
+# 	"dataSize" : 6286556,
+# 	"storageSize" : 12083200,
+# }
 def parse_mongo_document(input_file):
-    mongo_disk_records = {}
-    for matrix in MONGO_COL:
-        mongo_disk_records[matrix] = []
+    mongo_doc_records = {}
+    for matrix in MONGO_DOCUMENT_MATRIX:
+        mongo_doc_records[matrix] = []
 
     with open(input_file, 'r') as f:
         for line in f:
-            for matrix in MONGO_COL:
+            for matrix in MONGO_DOCUMENT_MATRIX:
                 if line.find(matrix) >= 0 :
                     splited_line = split_line_by_colon(line)
-                    mongo_disk_records[matrix].append(int(splited_line[1]))
+                    mongo_doc_records[matrix].append(int(splited_line[1]))
                     break
+    return mongo_doc_records
+
+# Parser for mongo disk log file
+# The log file look like:
+# {
+# 	"fileSize" : 201326592,
+# 	"nsSizeMB" : 16,
+# }
+# 3.1G	/var/lib/mongodb/journal/
+def parse_mongo_disk(input_file):
+    mongo_disk_records = {}
+
+    with open(input_file, 'r') as f:
+        for line in f:
+            if line.find('fileSize') >= 0:
+                splited_line = split_line_by_colon(line)
+                mongo_disk_records["fileSize"] = int(splited_line[1])
+                continue
+            if line.find('nsSizeMB') >= 0:
+                splited_line = split_line_by_colon(line)
+                mongo_disk_records["nsSizeMB"] = int(splited_line[1]) * 1024 * 1024
+                continue
+            if line.find('journal') >= 0:
+                splited_line = split_line_by_space(line)
+                mongo_disk_records["journal"] = parse_size(splited_line[0])
+                continue
     return mongo_disk_records
 
+# Parser for case info log file
+# The log file look like:
+# {
+#     "configuration":
+#     {
+#         "interval":5
+#     },
+#     "time marker":
+#     {
+#         "start":"2016/03/16 11:33:57",
+#         "node finish": "2016/03/16 11:38:57",
+#         "end":"2016/03/16 11:43:57"
+#     }
+# }
 def parse_case_info(filename):
     with open(filename, 'r') as f:
         case_info_json = json.load(f)
     # print(case_info_json)
     return case_info_json
 
+# Parser for CPU time string from ATOP log
 def parse_cpu_time(time):
     #return number of micro second
     # time may be '12m53s', or '0.01s'
@@ -96,6 +152,7 @@ def parse_cpu_time(time):
     time_ret = int((sec + (minute * 60) + (hour * 3600)) * 1000)
     return time_ret
 
+# Parser for memory of disk string from ATOP log
 def parse_size(size):
     # return size of byte of memory usage, or disk usage
     # size may be '1.2T', '1.3G', '348.2M', '95488K', or '0K'
@@ -115,9 +172,9 @@ def parse_size(size):
     size = float(size_str[:-1])
     # Return time in unit of BYTE
     size_ret = int(size * scale)
-    # print(size_str + ' scale: ' + str(scale) + ' ' + str(size_ret))
-    return  size_ret
+    return size_ret
 
+# Parser for network IO string from ATOP log
 def parse_network_io(io):
     # return the amount of network io activity
     # size may be '7515', '104e4', or '989e3'
@@ -136,11 +193,11 @@ def parse_network_io(io):
     # print('str:' + io + ' base:' + io_str_base + ' exp:' + io_str_exponent + ' ret:' + str(io_ret))
     return io_ret
 
+# Parser for network bandwidth string from ATOP log
 def parse_network_bw(bw, unit):
     # return the network bandwidth in unit of bps (byte per second)
     # bw may be '13' or '989'
     # unit may be 'Kbps', 'Mbps', 'Gbps' or 'Tbps'
-
     scale = 1
     if unit == 'Tbps':
         scale = 1000000000000
@@ -153,38 +210,33 @@ def parse_network_bw(bw, unit):
 
     # Return bandwidth in unit of bps (byte per second)
     bw_ret = int(bw) * scale
-    # print('bw:' + bw + ' unit:' + unit + ' ret:' + str(bw_ret))
     return bw_ret
 
-# parse summary data from file, and write to js file
-def parse_summary(filename, process_list):
-    summary_list = {}
-    with open(filename, 'r') as f:
-        for line in f:
-            if line.find('ATOP') < 0:
-                parsed_line = parse_line_atop(line)
+# Write summary data to js file that will be used by front-end code
+# It take data from different sources
+# Output will look like:
+#
+# beam.smp_usrcpu_avg = 2.658895364973633
+# beam.smp_usrcpu_sum = 9580
+# beam.smp_usrcpu_max = 20
+# beam.smp_usrcpu_min = 0
+#
+# on-tftp_vsize_avg = 970400000.0
+# on-tftp_vsize_sum = 3496351200000
+# on-tftp_vsize_max = 970400000
+# on-tftp_vsize_min = 970400000
+#
+# mongodb_storagesize_avg = 12083200.0
+# mongodb_storagesize_sum = 41819955200
+# mongodb_storagesize_max = 12083200
+# mongodb_storagesize_min = 12083200
+#
+# mongodb_file_size = 3318103808
+def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_disk, output_filename):
+    file_open = open(output_filename, 'w')
 
-                pid = parsed_line['process']
-                process_name = get_process_name(process_list, pid)
-
-                if process_name not in summary_list:
-                    summary_list[process_name] = []
-
-                summary_list[process_name].append(parsed_line['list'])
-
-    for process in summary_list.keys():
-        delta = [int(y) - int(x) for x, y in zip(summary_list[process][0], summary_list[process][1])]
-        summary_list[process] = delta
-
-    return summary_list
-
-def write_summary_to_js(summary_data, statistic_atop, statistic_mongo, output_filename):
-    cwd = os.path.dirname(os.path.realpath(__file__))
-    file_dir_name = os.path.join(cwd, output_filename)
-    file_open = open(file_dir_name, 'w')
-
-    for process in summary_data.keys():
-        for matrix in MATRIX_COL:
+    for process in statistic_atop.keys():
+        for matrix in ATOP_MATRIX:
             for statistic in statistic_atop[process][matrix]:
                 file_open.write(process + '_' + matrix.lower() + '_' + statistic
                                 + ' = '
@@ -193,41 +245,99 @@ def write_summary_to_js(summary_data, statistic_atop, statistic_mongo, output_fi
             file_open.write('\n')
         file_open.write('\n')
 
-    for matrix in statistic_mongo.keys():
-        for statistic in statistic_mongo[matrix]:
+    for matrix in statistic_mongo_doc.keys():
+        for statistic in statistic_mongo_doc[matrix]:
             file_open.write('mongodb_' + matrix.lower() + '_' + statistic
                                     + ' = '
-                                    + str(statistic_mongo[matrix][statistic])
+                                    + str(statistic_mongo_doc[matrix][statistic])
                                     + '\n')
         file_open.write('\n')
     file_open.write('\n')
 
+    totol_file_size = statistic_mongo_disk["fileSize"] \
+                      + statistic_mongo_disk["nsSizeMB"]\
+                      + statistic_mongo_disk["journal"]
+
+    file_open.write('mongodb_file_size'
+                    + ' = '
+                    + str(totol_file_size)
+                    + '\n')
+
+# Calculate statistic values from ATOP parsed result
+# The return object will look like:
+# {
+#     "on-http": {
+#         "SYSCPU": {
+#             "max": 1234,
+#             "min": 12,
+#             "avg": 111,
+#             "sum": 12132
+#         }
+#         "RDDSK": {
+#             "max": 1234,
+#             "min": 12,
+#             "avg": 111,
+#             "sum": 12132
+#         }
+#     },
+#     "mongod": {
+#         "SYSCPU": {
+#             "max": 1234,
+#             "min": 12,
+#             "avg": 111,
+#             "sum": 12132
+#         }
+#         "RDDSK": {
+#             "max": 1234,
+#             "min": 12,
+#             "avg": 111,
+#             "sum": 12132
+#         }
+#     }
+# }
 def calc_max_min_avg_atop(matrix_data):
     max_min_avg_ret = {}
     for process in matrix_data.keys():
         max_min_avg_ret[process] = {}
         matrix_list = {}
 
-        for matrix in MATRIX_COL:
+        for matrix in ATOP_MATRIX:
             matrix_list[matrix] = []
 
         records = matrix_data[process]
 
         for record in records:
-            for matrix in MATRIX_COL:
-                matrix_list[matrix].append(record[MATRIX_COL.index(matrix)])
+            for matrix in ATOP_MATRIX:
+                matrix_list[matrix].append(record[ATOP_MATRIX.index(matrix)])
 
-        for matrix in MATRIX_COL:
+        for matrix in ATOP_MATRIX:
             max_min_avg_ret[process][matrix] = calc_statistic(matrix_list[matrix])
 
     return max_min_avg_ret
 
+# Calculate statistic values from mongo document parsed result
+# The return object will look like:
+# {
+#     "dataSize": {
+#         "max": 1234,
+#         "min": 12,
+#         "avg": 111,
+#         "sum": 12132
+#     },
+#     "storageSize": {
+#         "max": 1234,
+#         "min": 12,
+#         "avg": 111,
+#         "sum": 12132
+#     }
+# }
 def calc_max_min_avg_mongo(matrix_data):
     max_min_avg_ret = {}
     for matrix in matrix_data.keys():
         max_min_avg_ret[matrix] = calc_statistic(matrix_data[matrix])
     return max_min_avg_ret
 
+# Return a object with the max/min/sum/average value of a list.
 def calc_statistic(list_data):
     ret_val = {}
 
@@ -239,7 +349,21 @@ def calc_statistic(list_data):
 
     return ret_val
 
-def write_matrix_to_js(matrix_data, starttime_str, sample_interval):
+# Write parsed atop result to js that can be used for generating graphs in
+# front-end code
+# One js file for each matrix in atop log file, the string has to be formed
+# in CSV format. An example as below:
+#
+# syscpu_data =
+# "Time,beam.smp,dhcpd,mongod,on-dhcp-proxy,on-http,on-syslog,on-taskgraph,on-tftp,\n" +
+# "2016-03-16 11:33:57,0,0,0,0,0,0,0,0,\n" +
+# "2016-03-16 11:34:02,0,0,0,0,0,0,0,0,\n" +
+# "2016-03-16 11:34:07,0,0,0,0,0,0,0,0,\n" +
+# "2016-03-16 11:34:12,0,0,0,0,0,0,0,0,\n" +
+# "2016-03-16 11:34:17,0,0,0,0,0,0,10,0,\n" +
+# "2016-03-16 11:34:22,0,0,0,0,0,0,0,0,\n" +
+# "2016-03-16 16:34:07,0,0,0,0,0,0,0,0,"
+def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir):
     start_time = datetime.datetime.strptime(starttime_str, "%Y/%m/%d %H:%M:%S")
 
     matrix_list = {}
@@ -255,11 +379,10 @@ def write_matrix_to_js(matrix_data, starttime_str, sample_interval):
     record_cnt = min(record_length_list)
 
     # Get output files ready, one per each matrix
-    cwd = os.path.dirname(os.path.realpath(__file__))
-    for matrix_idx in range(len(MATRIX_COL)):    # No need to loop the PID matrix
-        matrix_value = MATRIX_COL[matrix_idx].lower()
+    for matrix_idx in range(len(ATOP_MATRIX)):    # No need to loop the PID matrix
+        matrix_value = ATOP_MATRIX[matrix_idx].lower()
         filename = matrix_value + '.js'
-        file_dir_name = os.path.join(cwd, filename)
+        file_dir_name = os.path.join(out_dir, filename)
         file_open = open(file_dir_name, 'w')
         matrix_list[matrix_value] = file_open
 
@@ -282,6 +405,18 @@ def write_matrix_to_js(matrix_data, starttime_str, sample_interval):
             line = "\"" + current_time_str + ',' + ",".join(line_records) + padding
             file_open.write(line)
 
+# Write parsed atop result to js that can be used for generating graphs in
+# front-end code
+# One js file for each matrix in mongo document log file, the string has to be formed
+# in CSV format. An example as below:
+
+# mongo_document_data =
+# "Time,dataSize,storageSize,\n" +
+# "2016-03-16 11:33:57,6286556,12083200,\n" +
+# "2016-03-16 11:34:02,6286556,12083200,\n" +
+# "2016-03-16 11:34:07,6286556,12083200,\n" +
+# "2016-03-16 11:34:12,6286556,12083200,\n" +
+# "2016-03-16 16:22:17,6286556,12083200,"
 def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename):
     start_time = datetime.datetime.strptime(starttime_str, "%Y/%m/%d %H:%M:%S")
 
@@ -290,9 +425,7 @@ def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename)
     matrix_name_list = matrix_data.keys()
     matrix_name_list_str = ",".join(sorted(matrix_name_list))
 
-    cwd = os.path.dirname(os.path.realpath(__file__))
-    file_dir_name = os.path.join(cwd, filename)
-    file_open = open(file_dir_name, 'w')
+    file_open = open(filename, 'w')
 
     # write headers
     file_open.write('mongo_document' + '_' + 'data = \n')
@@ -319,6 +452,7 @@ def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename)
         line = "\"" + current_time_str + ',' + ",".join(line_records) + padding
         file_open.write(line)
 
+# Return a list with items from line spited by space
 def split_line_by_space(line):
     splited_line = re.split("\s+", line)
     #remove empty element
@@ -326,6 +460,7 @@ def split_line_by_space(line):
         splited_line.remove('')
     return splited_line
 
+# Return a list with items from line spited by colon
 def split_line_by_colon(line):
     splited_line = re.split(":", line)
     #remove empty element
@@ -334,6 +469,13 @@ def split_line_by_colon(line):
     splited_line[1] = splited_line[1][0:-2] # remove the tailing ',\n'
     return splited_line
 
+# Return a dict mapping PID to process name, according to info parsed from pid.log
+# Return dict look like:
+
+# {
+#     "1077": "mongod",
+#     "1106": "on-tftp"
+# }
 def parse_process_list(filename):
     PROCESS_LIST = [
     "on-http",
@@ -355,75 +497,79 @@ def parse_process_list(filename):
                     processes[param_list[0]] = process
                     break
 
-        return processes
+    return processes
 
+# Return a process name from PID per dict lookup
 def get_process_name(process_dict, pid_str):
     return process_dict[pid_str]
 
+# Line parser for atop log file
+# Return a list of decoded matrix value:
+# [syscpu, usrcpu, vsize, rsize, rddsk, wrdsk, rnet, snet, rnetbw, snetbw, cpu]
 def parse_line_atop(line):
     ret_val = {}
     param_list = split_line_by_space(line)
 
     # parse PID
-    pid_col = LINE_COL.index('PID')
+    pid_col = ATOP_LINE_COL.index('PID')
     pid = param_list[pid_col]
     ret_val['process'] = pid
 
     # Parse SYSCPU
-    syscpu_col = LINE_COL.index('SYSCPU')
+    syscpu_col = ATOP_LINE_COL.index('SYSCPU')
     syscpu_str = param_list[syscpu_col]
     syscpu = parse_cpu_time(syscpu_str)
     # Parse USRCPU
-    usrcpu_col = LINE_COL.index('USRCPU')
+    usrcpu_col = ATOP_LINE_COL.index('USRCPU')
     usrcpu_str = param_list[usrcpu_col]
     usrcpu = parse_cpu_time(usrcpu_str)
 
     # Parse memory VSIZE
-    vsize_col = LINE_COL.index('VSIZE')
+    vsize_col = ATOP_LINE_COL.index('VSIZE')
     vsize_str = param_list[vsize_col]
     vsize = parse_size(vsize_str)
 
     # Parse memory RSIZE
-    rsize_col = LINE_COL.index('RSIZE')
+    rsize_col = ATOP_LINE_COL.index('RSIZE')
     rsize_str = param_list[rsize_col]
     rsize = parse_size(rsize_str)
 
     # Parse memory RDDSK
-    rddsk_col = LINE_COL.index('RDDSK')
+    rddsk_col = ATOP_LINE_COL.index('RDDSK')
     rddsk_str = param_list[rddsk_col]
     rddsk = parse_size(rddsk_str)
 
     # Parse memory WRDSK
-    wrdsk_col = LINE_COL.index('WRDSK')
+    wrdsk_col = ATOP_LINE_COL.index('WRDSK')
     wrdsk_str = param_list[wrdsk_col]
     wrdsk = parse_size(wrdsk_str)
 
     # Parse network RNET
-    rnet_col = LINE_COL.index('RNET')
+    rnet_col = ATOP_LINE_COL.index('RNET')
     rnet_str = param_list[rnet_col]
     rnet = parse_network_io(rnet_str)
 
     # Parse network SNET
-    snet_col = LINE_COL.index('SNET')
+    snet_col = ATOP_LINE_COL.index('SNET')
     snet_str = param_list[snet_col]
     snet = parse_network_io(snet_str)
 
     # Parse network RNETBW
-    rnetbw_col = LINE_COL.index('RNETBW')
-    rnetbw_u_col = LINE_COL.index('RNETBW_U')
+    rnetbw_col = ATOP_LINE_COL.index('RNETBW')
+    rnetbw_u_col = ATOP_LINE_COL.index('RNETBW_U')
     rnetbw_str = param_list[rnetbw_col]
     rnetbw_u_str = param_list[rnetbw_u_col]
     rnetbw = parse_network_bw(rnetbw_str, rnetbw_u_str)
 
     # Parse network SNETBW
-    snetbw_col = LINE_COL.index('SNETBW')
-    snetbw_u_col = LINE_COL.index('SNETBW_U')
+    snetbw_col = ATOP_LINE_COL.index('SNETBW')
+    snetbw_u_col = ATOP_LINE_COL.index('SNETBW_U')
     snetbw_str = param_list[snetbw_col]
     snetbw_u_str = param_list[snetbw_u_col]
     snetbw = parse_network_bw(snetbw_str, snetbw_u_str)
 
     # Parse CPU utilization
-    cpu_col = LINE_COL.index('CPU')
+    cpu_col = ATOP_LINE_COL.index('CPU')
     cpu_str = param_list[cpu_col]
     cpu = int(cpu_str[0:-1])
     # print('CPU: ' + str(cpu))
@@ -449,41 +595,60 @@ def parse_atop(filename, proc_list):
             ret_val[process_name].append(parsed_line['list'])
     return ret_val
 
-# The main program            
-def parse():
-    # parse mongodb disk usage
-    pathname_mongo_document = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename_mongo_document)
+# The overall parser.
+# specify log_dir as the absolute directory where all the log files resides.
+# parsed output file will be placed at a folder called 'data' under log_dir
+def parse(log_dir):
+    if not os.path.exists(log_dir):
+        print("log dir " + log_dir + " does not exist")
+        return
+
+    output_dir = os.path.join(log_dir, 'data')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # parse mongodb document usage
+    pathname_mongo_document = os.path.join(log_dir, filename_mongo_document)
     mongo_document = parse_mongo_document(pathname_mongo_document)
 
+    # parse mongodb disk usage
+    pathname_mongo_disk = os.path.join(log_dir, filename_mongo_disk)
+    mongo_disk = parse_mongo_disk(pathname_mongo_disk)
+
     # parse case info
-    pathname_caseinfo = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename_caseinfo)
+    pathname_caseinfo = os.path.join(log_dir, filename_caseinfo)
     case_info = parse_case_info(pathname_caseinfo)
 
     # parse process list
-    pathname_process = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename_process)
+    pathname_process = os.path.join(log_dir, filename_process)
     process_list = parse_process_list(filename_process)
 
     # parse atop log file
-    pathname_atop = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename_atop)
+    pathname_atop = os.path.join(log_dir, filename_atop)
     atop_matrix = parse_atop(pathname_atop, process_list)
 
     # calc max/min/avg from result
     max_min_avg_atop = calc_max_min_avg_atop(atop_matrix)
     max_min_avg_mongo = calc_max_min_avg_mongo(mongo_document)
 
-    # Parse result summary
-    pathname_summary = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename_summary)
-    summary = parse_summary(pathname_summary, process_list)
-
-    pathname_summary_js = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename_summary_js)
-    write_summary_to_js(summary, max_min_avg_atop, max_min_avg_mongo, pathname_summary_js)
+    pathname_summary_js = os.path.join(output_dir, filename_summary_js)
+    write_summary_to_js(max_min_avg_atop,
+                        max_min_avg_mongo,
+                        mongo_disk,
+                        pathname_summary_js)
 
     # Print to js log file
-    write_matrix_to_js(atop_matrix, case_info["time marker"]["start"], case_info["configuration"]["interval"])
-    pathname_mongo_document_js = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename_mongo_document_js)
+    write_atop_matrix_to_js(atop_matrix,
+                       case_info["time marker"]["start"],
+                       case_info["configuration"]["interval"],
+                       output_dir)
+    pathname_mongo_document_js = os.path.join(output_dir, filename_mongo_document_js)
     write_mongo_doc_to_js(mongo_document,
                           case_info["time marker"]["start"],
                           case_info["configuration"]["interval"],
                           pathname_mongo_document_js)
 
-parse()
+
+if __name__ == '__main__':
+    parse(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test_dir'))
+    
