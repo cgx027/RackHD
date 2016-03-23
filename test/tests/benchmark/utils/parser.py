@@ -73,7 +73,7 @@ def parse_mongo_document(input_file):
     with open(input_file, 'r') as f:
         for line in f:
             for matrix in MONGO_DOCUMENT_MATRIX:
-                if line.find(matrix) >= 0 :
+                if line.find(matrix) >= 0:
                     splited_line = split_line_by_colon(line)
                     mongo_doc_records[matrix].append(int(splited_line[1]))
                     break
@@ -129,9 +129,9 @@ def parse_case_info(filename):
 def parse_cpu_time(time):
     #return number of micro second
     # time may be '12m53s', or '0.01s'
-    hour_match = re.findall('\d+h', time)
-    minute_match = re.findall('\d+m', time)
-    sec_match = re.findall('[0-9]+\.*[0-9]*s',time)
+    hour_match = re.findall(r'\d+h', time)
+    minute_match = re.findall(r'\d+m', time)
+    sec_match = re.findall(r'[0-9]+\.*[0-9]*s', time)
 
     if len(hour_match) == 0:
         hour = 0
@@ -156,7 +156,7 @@ def parse_cpu_time(time):
 def parse_size(size):
     # return size of byte of memory usage, or disk usage
     # size may be '1.2T', '1.3G', '348.2M', '95488K', or '0K'
-    size_match = re.findall('[0-9]+\.*[0-9]*[TGMK]',size)
+    size_match = re.findall(r'[0-9]+\.*[0-9]*[TGMK]', size)
     size_str = size_match[0]
 
     scale = 1
@@ -178,7 +178,7 @@ def parse_size(size):
 def parse_network_io(io):
     # return the amount of network io activity
     # size may be '7515', '104e4', or '989e3'
-    io_match = re.findall('(?P<base>[0-9]+)e*(?P<exponent>[0-9]*)', io)
+    io_match = re.findall(r'(?P<base>[0-9]+)e*(?P<exponent>[0-9]*)', io)
     io_str_base = io_match[0][0]
     io_str_exponent = io_match[0][1]
 
@@ -190,7 +190,6 @@ def parse_network_io(io):
 
     # Return number of IOs
     io_ret = io_base * pow(10, io_exponent)
-    # print('str:' + io + ' base:' + io_str_base + ' exp:' + io_str_exponent + ' ret:' + str(io_ret))
     return io_ret
 
 # Parser for network bandwidth string from ATOP log
@@ -238,7 +237,9 @@ def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_dis
     for process in statistic_atop.keys():
         for matrix in ATOP_MATRIX:
             for statistic in statistic_atop[process][matrix]:
-                file_open.write(process + '_' + matrix.lower() + '_' + statistic
+                file_open.write(propate.replace('.', '_')
+                                + '_' + matrix.lower()
+                                + '_' + statistic
                                 + ' = '
                                 + str(statistic_atop[process][matrix][statistic])
                                 + '\n')
@@ -248,9 +249,9 @@ def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_dis
     for matrix in statistic_mongo_doc.keys():
         for statistic in statistic_mongo_doc[matrix]:
             file_open.write('mongodb_' + matrix.lower() + '_' + statistic
-                                    + ' = '
-                                    + str(statistic_mongo_doc[matrix][statistic])
-                                    + '\n')
+                            + ' = '
+                            + str(statistic_mongo_doc[matrix][statistic])
+                            + '\n')
         file_open.write('\n')
     file_open.write('\n')
 
@@ -373,7 +374,7 @@ def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir
     pid_name_list_str = ",".join(sorted(pid_name_list))
 
     record_length_list = []
-    for pid,pid_record in matrix_data.items():
+    for pid, pid_record in matrix_data.items():
         record_length_list.append(len(pid_record))
 
     record_cnt = min(record_length_list)
@@ -400,7 +401,7 @@ def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir
             else:
                 padding = padding_str
 
-            current_time = start_time + datetime.timedelta(seconds = record * sample_interval)
+            current_time = start_time + datetime.timedelta(seconds + (record * sample_interval))
             current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
             line = "\"" + current_time_str + ',' + ",".join(line_records) + padding
             file_open.write(line)
@@ -447,7 +448,7 @@ def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename)
         else:
             padding = padding_str
 
-        current_time = start_time + datetime.timedelta(seconds = record * sample_interval)
+        current_time = start_time + datetime.timedelta(seconds + record * sample_interval)
         current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
         line = "\"" + current_time_str + ',' + ",".join(line_records) + padding
         file_open.write(line)
@@ -478,14 +479,14 @@ def split_line_by_colon(line):
 # }
 def parse_process_list(filename):
     PROCESS_LIST = [
-    "on-http",
-    "on-syslog",
-    "on-taskgraph",
-    "on-tftp",
-    "on-dhcp-proxy",
-    "beam.smp",
-    "mongod",
-    "dhcpd"
+        "on-http",
+        "on-syslog",
+        "on-taskgraph",
+        "on-tftp",
+        "on-dhcp-proxy",
+        "beam.smp",
+        "mongod",
+        "dhcpd"
     ]
     processes = {}
     with open(filename, 'r') as f:
@@ -574,7 +575,7 @@ def parse_line_atop(line):
     cpu = int(cpu_str[0:-1])
     # print('CPU: ' + str(cpu))
     ret_val['list'] = [syscpu, usrcpu, vsize, rsize, rddsk, wrdsk,
-                rnet, snet, rnetbw, snetbw, cpu]
+                       rnet, snet, rnetbw, snetbw, cpu]
 
     return ret_val
 
@@ -600,7 +601,7 @@ def parse_atop(filename, proc_list):
 # parsed output file will be placed at a folder called 'data' under log_dir
 def parse(log_dir):
     if not os.path.exists(log_dir):
-        print("log dir " + log_dir + " does not exist")
+        print "log dir " + log_dir + " does not exist"
         return
 
     output_dir = os.path.join(log_dir, 'data')
@@ -621,7 +622,7 @@ def parse(log_dir):
 
     # parse process list
     pathname_process = os.path.join(log_dir, filename_process)
-    process_list = parse_process_list(filename_process)
+    process_list = parse_process_list(pathname_process)
 
     # parse atop log file
     pathname_atop = os.path.join(log_dir, filename_atop)
@@ -639,9 +640,9 @@ def parse(log_dir):
 
     # Print to js log file
     write_atop_matrix_to_js(atop_matrix,
-                       case_info["time marker"]["start"],
-                       case_info["configuration"]["interval"],
-                       output_dir)
+                            case_info["time marker"]["start"],
+                            case_info["configuration"]["interval"],
+                            output_dir)
     pathname_mongo_document_js = os.path.join(output_dir, filename_mongo_document_js)
     write_mongo_doc_to_js(mongo_document,
                           case_info["time marker"]["start"],
