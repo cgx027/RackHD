@@ -237,7 +237,7 @@ def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_dis
     for process in statistic_atop.keys():
         for matrix in ATOP_MATRIX:
             for statistic in statistic_atop[process][matrix]:
-                file_open.write(propate.replace('.', '_')
+                file_open.write(process.replace('.', '_')
                                 + '_' + matrix.lower()
                                 + '_' + statistic
                                 + ' = '
@@ -401,7 +401,7 @@ def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir
             else:
                 padding = padding_str
 
-            current_time = start_time + datetime.timedelta(seconds + (record * sample_interval))
+            current_time = start_time + datetime.timedelta(seconds = record * sample_interval)
             current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
             line = "\"" + current_time_str + ',' + ",".join(line_records) + padding
             file_open.write(line)
@@ -448,7 +448,7 @@ def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename)
         else:
             padding = padding_str
 
-        current_time = start_time + datetime.timedelta(seconds + record * sample_interval)
+        current_time = start_time + datetime.timedelta(seconds = record * sample_interval)
         current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
         line = "\"" + current_time_str + ',' + ",".join(line_records) + padding
         file_open.write(line)
