@@ -237,7 +237,8 @@ def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_dis
     for process in statistic_atop.keys():
         for matrix in ATOP_MATRIX:
             for statistic in statistic_atop[process][matrix]:
-                file_open.write(process.replace('.', '_')
+                file_open.write('var ' 
+								+ process.replace('.', '_')
                                 + '_' + matrix.lower()
                                 + '_' + statistic
                                 + ' = '
@@ -248,7 +249,7 @@ def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_dis
 
     for matrix in statistic_mongo_doc.keys():
         for statistic in statistic_mongo_doc[matrix]:
-            file_open.write('mongodb_' + matrix.lower() + '_' + statistic
+            file_open.write('var mongodb_' + matrix.lower() + '_' + statistic
                             + ' = '
                             + str(statistic_mongo_doc[matrix][statistic])
                             + '\n')
@@ -259,7 +260,7 @@ def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_dis
                       + statistic_mongo_disk["nsSizeMB"]\
                       + statistic_mongo_disk["journal"]
 
-    file_open.write('mongodb_file_size'
+    file_open.write('var mongodb_file_size'
                     + ' = '
                     + str(totol_file_size)
                     + '\n')
@@ -388,7 +389,7 @@ def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir
         matrix_list[matrix_value] = file_open
 
         # write headers
-        file_open.write(matrix_value + '_' + 'data = \n')
+        file_open.write('var ' + matrix_value + '_' + 'data = \n')
         file_open.write('\"Time,' + pid_name_list_str + padding_str)
 
         for record in range(record_cnt):     # Remove the first record
@@ -429,7 +430,7 @@ def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename)
     file_open = open(filename, 'w')
 
     # write headers
-    file_open.write('mongo_document' + '_' + 'data = \n')
+    file_open.write('var mongo_document' + '_' + 'data = \n')
     file_open.write('\"Time,' + matrix_name_list_str + padding_str)
 
     record_length_list = []
