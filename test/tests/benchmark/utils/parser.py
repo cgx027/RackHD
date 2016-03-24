@@ -215,55 +215,48 @@ def parse_network_bw(bw, unit):
 # It take data from different sources
 # Output will look like:
 #
-# beam.smp_usrcpu_avg = 2.658895364973633
-# beam.smp_usrcpu_sum = 9580
-# beam.smp_usrcpu_max = 20
-# beam.smp_usrcpu_min = 0
-#
-# on-tftp_vsize_avg = 970400000.0
-# on-tftp_vsize_sum = 3496351200000
-# on-tftp_vsize_max = 970400000
-# on-tftp_vsize_min = 970400000
-#
-# mongodb_storagesize_avg = 12083200.0
-# mongodb_storagesize_sum = 41819955200
-# mongodb_storagesize_max = 12083200
-# mongodb_storagesize_min = 12083200
-#
-# mongodb_file_size = 3318103808
+# var atop_statistics =
+# {
+#     "beam.smp": {
+#         "RDDSK": {
+#             "min": 0,
+#             "max": 0,
+#             "sum": 0,
+#             "avg": 0.0
+#         },
+#         "RNETBW": {
+#             "min": 0,
+#             "max": 251000,
+#             "sum": 1065000,
+#             "avg": 295.5870108243131
+#         }
+#     },
+#     "on-http": {
+#             "RDDSK": {
+#                 "min": 0,
+#                 "max": 0,
+#                 "sum": 0,
+#                 "avg": 0.0
+#             }
+#     }
+# }
+# var mongo_document_statistics = {}
+# var mongo_disk_statistics = {}
 def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_disk, output_filename):
-    file_open = open(output_filename, 'w')
+    with open(output_filename, 'w') as f:
+        f.write("var atop_statistics = \n")
+        json_str = json.dumps(statistic_atop, indent=4)
+        f.write(json_str)
 
-    for process in statistic_atop.keys():
-        for matrix in ATOP_MATRIX:
-            for statistic in statistic_atop[process][matrix]:
-                file_open.write('var '
-			        + process.replace('.', '_')
-                                + '_' + matrix.lower()
-                                + '_' + statistic
-                                + ' = '
-                                + str(statistic_atop[process][matrix][statistic])
-                                + '\n')
-            file_open.write('\n')
-        file_open.write('\n')
+        f.write('\n\n')
+        f.write("var mongo_document_statistics = \n")
+        json_str = json.dumps(statistic_mongo_doc, indent=4)
+        f.write(json_str)
 
-    for matrix in statistic_mongo_doc.keys():
-        for statistic in statistic_mongo_doc[matrix]:
-            file_open.write('var mongodb_' + matrix.lower() + '_' + statistic
-                            + ' = '
-                            + str(statistic_mongo_doc[matrix][statistic])
-                            + '\n')
-        file_open.write('\n')
-    file_open.write('\n')
-
-    totol_file_size = statistic_mongo_disk["fileSize"] \
-                      + statistic_mongo_disk["nsSizeMB"]\
-                      + statistic_mongo_disk["journal"]
-
-    file_open.write('var mongodb_file_size'
-                    + ' = '
-                    + str(totol_file_size)
-                    + '\n')
+        f.write('\n\n')
+        f.write("var mongo_disk_statistics = \n")
+        json_str = json.dumps(statistic_mongo_disk, indent=4)
+        f.write(json_str)
 
 # Calculate statistic values from ATOP parsed result
 # The return object will look like:
@@ -653,4 +646,4 @@ def parse(log_dir):
 
 if __name__ == '__main__':
     parse(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test_dir'))
-    
+
