@@ -237,8 +237,8 @@ def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_dis
     for process in statistic_atop.keys():
         for matrix in ATOP_MATRIX:
             for statistic in statistic_atop[process][matrix]:
-                file_open.write('var ' 
-								+ process.replace('.', '_')
+                file_open.write('var '
+			        + process.replace('.', '_')
                                 + '_' + matrix.lower()
                                 + '_' + statistic
                                 + ' = '
