@@ -258,10 +258,8 @@ def write_summary_to_js(statistic_data,
         f.write(json_str)
 
 def write_case_info_to_js(case_information, output_filename):
-    timestamp = case_information["log path"].replace('-', '_')
-
     with open(output_filename, 'w') as f:
-        f.write('var case_info_' + timestamp + ' = \n')
+        f.write('var case_info = \n')
         json_str = json.dumps(case_information, indent=4)
         f.write(json_str)
 
