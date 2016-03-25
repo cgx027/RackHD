@@ -14,6 +14,8 @@ filename_mongo_disk = "mongo_disk.log"
 # Generated output files that will be used by front-end code
 filename_summary_js = "summary.js"
 filename_mongo_document_js = "mongo_document.js"
+filename_caseinfo_js = "case_info.js"
+filename_compare_list_js = "compare_list.js"
 
 # The column line definition on the atop log file
 ATOP_LINE_COL = [
@@ -108,10 +110,9 @@ def parse_mongo_disk(input_file):
 # Parser for case info log file
 # The log file look like:
 # {
-#     "configuration":
-#     {
-#         "interval":5
-#     },
+# 	"interval": 1,
+# 	"log path": "20160323-032739",
+# 	"case name": "poller",
 #     "time marker":
 #     {
 #         "start":"2016/03/16 11:33:57",
@@ -212,10 +213,11 @@ def parse_network_bw(bw, unit):
     return bw_ret
 
 # Write summary data to js file that will be used by front-end code
+# Time stamp is added as a prefix to var to avoid conflict
 # It take data from different sources
 # Output will look like:
 #
-# var atop_statistics =
+# var 20160323_032739_atop_statistics =
 # {
 #     "beam.smp": {
 #         "RDDSK": {
@@ -240,60 +242,79 @@ def parse_network_bw(bw, unit):
 #             }
 #     }
 # }
-# var mongo_document_statistics = {}
-# var mongo_disk_statistics = {}
-def write_summary_to_js(statistic_atop, statistic_mongo_doc, statistic_mongo_disk, output_filename):
+# var 20160323_032739_mongo_document_statistics = {}
+# var 20160323_032739_mongo_disk_statistics = {}
+def write_summary_to_js(statistic_atop,
+                        statistic_mongo_doc,
+                        statistic_mongo_disk,
+                        case_information,
+                        output_filename):
+    timestamp = case_information["log path"].replace('-', '_')
+
     with open(output_filename, 'w') as f:
-        f.write("var atop_statistics = \n")
+        f.write('var ' + timestamp + '_atop_statistics = \n')
         json_str = json.dumps(statistic_atop, indent=4)
         f.write(json_str)
 
         f.write('\n\n')
-        f.write("var mongo_document_statistics = \n")
+        f.write('var ' + timestamp + '_mongo_document_statistics = \n')
         json_str = json.dumps(statistic_mongo_doc, indent=4)
         f.write(json_str)
 
         f.write('\n\n')
-        f.write("var mongo_disk_statistics = \n")
+        f.write('var ' + timestamp + '_mongo_disk_statistics = \n')
         json_str = json.dumps(statistic_mongo_disk, indent=4)
+        f.write(json_str)
+
+def write_case_info_to_js(case_info_obj, output_filename):
+    with open(output_filename, 'w') as f:
+        f.write("var case_info = \n")
+        json_str = json.dumps(case_info_obj, indent=4)
         f.write(json_str)
 
 # Calculate statistic values from ATOP parsed result
 # The return object will look like:
 # {
-#     "on-http": {
-#         "SYSCPU": {
-#             "max": 1234,
-#             "min": 12,
-#             "avg": 111,
-#             "sum": 12132
-#         }
-#         "RDDSK": {
-#             "max": 1234,
-#             "min": 12,
-#             "avg": 111,
-#             "sum": 12132
+#     "RSIZE": {
+#         "on-syslog": {
+#             "max": 74600000,
+#             "min": 74600000,
+#             "avg": 74600000.0
+#         },
+#         "on-taskgraph": {
+#             "max": 100900000,
+#             "min": 98300000,
+#             "avg": 99428863.72467388
 #         }
 #     },
-#     "mongod": {
-#         "SYSCPU": {
-#             "max": 1234,
-#             "min": 12,
-#             "avg": 111,
-#             "sum": 12132
-#         }
-#         "RDDSK": {
-#             "max": 1234,
-#             "min": 12,
-#             "avg": 111,
-#             "sum": 12132
+#     "RNET": {
+#         "on-syslog": {
+#             "max": 0,
+#             "sum": 0,
+#             "min": 0,
+#             "avg": 0.0
+#         },
+#         "on-taskgraph": {
+#             "max": 254,
+#             "sum": 4986,
+#             "min": 0,
+#             "avg": 1.3838467943380517
 #         }
 #     }
 # }
 def calc_max_min_avg_atop(matrix_data):
+    matrix_need_no_sum = [
+        "VSIZE",
+        "RSIZE",
+        "RNETBW",
+        "SNETBW",
+        "CPU"
+    ]
     max_min_avg_ret = {}
+    for matrix in ATOP_MATRIX:
+        max_min_avg_ret[matrix] = {}
+
     for process in matrix_data.keys():
-        max_min_avg_ret[process] = {}
         matrix_list = {}
 
         for matrix in ATOP_MATRIX:
@@ -306,7 +327,10 @@ def calc_max_min_avg_atop(matrix_data):
                 matrix_list[matrix].append(record[ATOP_MATRIX.index(matrix)])
 
         for matrix in ATOP_MATRIX:
-            max_min_avg_ret[process][matrix] = calc_statistic(matrix_list[matrix])
+            if matrix in matrix_need_no_sum:
+                max_min_avg_ret[matrix][process] = calc_statistic(matrix_list[matrix], True)
+            else:
+                max_min_avg_ret[matrix][process] = calc_statistic(matrix_list[matrix], False)
 
     return max_min_avg_ret
 
@@ -329,27 +353,29 @@ def calc_max_min_avg_atop(matrix_data):
 def calc_max_min_avg_mongo(matrix_data):
     max_min_avg_ret = {}
     for matrix in matrix_data.keys():
-        max_min_avg_ret[matrix] = calc_statistic(matrix_data[matrix])
+        max_min_avg_ret[matrix] = calc_statistic(matrix_data[matrix], True)
     return max_min_avg_ret
 
 # Return a object with the max/min/sum/average value of a list.
-def calc_statistic(list_data):
+def calc_statistic(list_data, no_sum = False):
     ret_val = {}
 
     ret_val["max"] = max(list_data)
     ret_val["min"] = min(list_data)
-    summation = sum(list_data)
-    ret_val["sum"] = summation
-    ret_val["avg"] = summation/(float(len(list_data)))
+    list_sum = sum(list_data)
+    ret_val["avg"] = list_sum/(float(len(list_data)))
+    if not no_sum:
+        ret_val["sum"] = list_sum
 
     return ret_val
 
 # Write parsed atop result to js that can be used for generating graphs in
 # front-end code
+# Time stamp is added as a prefix to var to avoid conflict
 # One js file for each matrix in atop log file, the string has to be formed
 # in CSV format. An example as below:
 #
-# syscpu_data =
+# 20160323_032739_syscpu_data =
 # "Time,beam.smp,dhcpd,mongod,on-dhcp-proxy,on-http,on-syslog,on-taskgraph,on-tftp,\n" +
 # "2016-03-16 11:33:57,0,0,0,0,0,0,0,0,\n" +
 # "2016-03-16 11:34:02,0,0,0,0,0,0,0,0,\n" +
@@ -358,7 +384,11 @@ def calc_statistic(list_data):
 # "2016-03-16 11:34:17,0,0,0,0,0,0,10,0,\n" +
 # "2016-03-16 11:34:22,0,0,0,0,0,0,0,0,\n" +
 # "2016-03-16 16:34:07,0,0,0,0,0,0,0,0,"
-def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir):
+def write_atop_matrix_to_js(matrix_data, case_information, out_dir):
+    starttime_str = case_information["time marker"]["start"]
+    sample_interval = case_information["interval"]
+    timestamp = case_information["log path"].replace('-', '_')
+
     start_time = datetime.datetime.strptime(starttime_str, "%Y/%m/%d %H:%M:%S")
 
     matrix_list = {}
@@ -382,7 +412,7 @@ def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir
         matrix_list[matrix_value] = file_open
 
         # write headers
-        file_open.write('var ' + matrix_value + '_' + 'data = \n')
+        file_open.write('var ' + timestamp + '_' + matrix_value + '_' + 'data = \n')
         file_open.write('\"Time,' + pid_name_list_str + padding_str)
 
         for record in range(record_cnt):     # Remove the first record
@@ -402,17 +432,22 @@ def write_atop_matrix_to_js(matrix_data, starttime_str, sample_interval, out_dir
 
 # Write parsed atop result to js that can be used for generating graphs in
 # front-end code
+# Time stamp is added as a prefix to var to avoid conflict
 # One js file for each matrix in mongo document log file, the string has to be formed
 # in CSV format. An example as below:
 
-# mongo_document_data =
+# 20160323_032739_mongo_document_data =
 # "Time,dataSize,storageSize,\n" +
 # "2016-03-16 11:33:57,6286556,12083200,\n" +
 # "2016-03-16 11:34:02,6286556,12083200,\n" +
 # "2016-03-16 11:34:07,6286556,12083200,\n" +
 # "2016-03-16 11:34:12,6286556,12083200,\n" +
 # "2016-03-16 16:22:17,6286556,12083200,"
-def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename):
+def write_mongo_doc_to_js(matrix_data, case_information, filename):
+    starttime_str = case_information["time marker"]["start"]
+    sample_interval = case_information["interval"]
+    timestamp = case_information["log path"].replace('-', '_')
+
     start_time = datetime.datetime.strptime(starttime_str, "%Y/%m/%d %H:%M:%S")
 
     padding_str = ',\\n\" + \n'
@@ -423,7 +458,7 @@ def write_mongo_doc_to_js(matrix_data, starttime_str, sample_interval, filename)
     file_open = open(filename, 'w')
 
     # write headers
-    file_open.write('var mongo_document' + '_' + 'data = \n')
+    file_open.write('var ' + timestamp + '_' + 'mongo_document' + '_' + 'data = \n')
     file_open.write('\"Time,' + matrix_name_list_str + padding_str)
 
     record_length_list = []
@@ -590,12 +625,39 @@ def parse_atop(filename, proc_list):
             ret_val[process_name].append(parsed_line['list'])
     return ret_val
 
+# scan for a list of data that can be used for compare
+# and write the list to js file which will be used by front-end code
+# output will be look like:
+# 20160323_032739_compare_list =
+# {
+#     ["20160323_032739",
+#      "20160323_032812",
+#      "20160323_032923"]
+# }
+def write_compare_list_to_js(log_dir_str, case_information, output_filename):
+    result_list = {"result list": []}
+    timestamp = case_information["log path"].replace('-', '_')
+
+    # scan compare list
+    path_par_par = os.path.abspath(os.path.join(log_dir_str, os.pardir, os.pardir))
+
+    for name in os.listdir(path_par_par):
+        pathname = os.path.join(path_par_par, name)
+        if not os.path.isfile(pathname):
+            result_list["result list"].append(name)
+
+    with open(output_filename, 'w') as f:
+        f.write('var ' + timestamp + '_compare_list = \n')
+        json_str = json.dumps(result_list, indent=4)
+        f.write(json_str)
+    pass
+
 # The overall parser.
 # specify log_dir as the absolute directory where all the log files resides.
 # parsed output file will be placed at a folder called 'data' under log_dir
 def parse(log_dir):
     if not os.path.exists(log_dir):
-        print "log dir " + log_dir + " does not exist"
+        # print "log dir " + log_dir + " does not exist"
         return
 
     output_dir = os.path.join(log_dir, 'data')
@@ -621,7 +683,6 @@ def parse(log_dir):
     # parse atop log file
     pathname_atop = os.path.join(log_dir, filename_atop)
     atop_matrix = parse_atop(pathname_atop, process_list)
-
     # calc max/min/avg from result
     max_min_avg_atop = calc_max_min_avg_atop(atop_matrix)
     max_min_avg_mongo = calc_max_min_avg_mongo(mongo_document)
@@ -630,18 +691,24 @@ def parse(log_dir):
     write_summary_to_js(max_min_avg_atop,
                         max_min_avg_mongo,
                         mongo_disk,
+                        case_info,
                         pathname_summary_js)
 
     # Print to js log file
     write_atop_matrix_to_js(atop_matrix,
-                            case_info["time marker"]["start"],
-                            case_info["configuration"]["interval"],
+                            case_info,
                             output_dir)
     pathname_mongo_document_js = os.path.join(output_dir, filename_mongo_document_js)
+
     write_mongo_doc_to_js(mongo_document,
-                          case_info["time marker"]["start"],
-                          case_info["configuration"]["interval"],
+                          case_info,
                           pathname_mongo_document_js)
+
+    pathname_caseinfo_js = os.path.join(output_dir, filename_caseinfo_js)
+    write_case_info_to_js(case_info, pathname_caseinfo_js)
+
+    pathname_compare_list_js = os.path.join(output_dir, filename_compare_list_js)
+    write_compare_list_to_js(log_dir, case_info, pathname_compare_list_js)
 
 
 if __name__ == '__main__':
