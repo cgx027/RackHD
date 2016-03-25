@@ -12,7 +12,9 @@ filename_mongo_document = "mongo_document.log"
 filename_mongo_disk = "mongo_disk.log"
 
 # Generated output files that will be used by front-end code
-filename_summary_js = "summary.js"
+filename_atop_summary_js = "atop_summary.js"
+filename_mongo_doc_summary_js = "mongo_doc_summary.js"
+filename_mongo_disk_summary_js = "mongo_disk_summary.js"
 filename_mongo_document_js = "mongo_document.js"
 filename_caseinfo_js = "case_info.js"
 filename_compare_list_js = "compare_list.js"
@@ -244,32 +246,23 @@ def parse_network_bw(bw, unit):
 # }
 # var 20160323_032739_mongo_document_statistics = {}
 # var 20160323_032739_mongo_disk_statistics = {}
-def write_summary_to_js(statistic_atop,
-                        statistic_mongo_doc,
-                        statistic_mongo_disk,
+def write_summary_to_js(statistic_data,
+                        var_name,
                         case_information,
                         output_filename):
     timestamp = case_information["log path"].replace('-', '_')
 
     with open(output_filename, 'w') as f:
-        f.write('var ' + timestamp + '_atop_statistics = \n')
-        json_str = json.dumps(statistic_atop, indent=4)
+        f.write('var ' + var_name + '_' + timestamp + ' = \n')
+        json_str = json.dumps(statistic_data, indent=4)
         f.write(json_str)
 
-        f.write('\n\n')
-        f.write('var ' + timestamp + '_mongo_document_statistics = \n')
-        json_str = json.dumps(statistic_mongo_doc, indent=4)
-        f.write(json_str)
+def write_case_info_to_js(case_information, output_filename):
+    timestamp = case_information["log path"].replace('-', '_')
 
-        f.write('\n\n')
-        f.write('var ' + timestamp + '_mongo_disk_statistics = \n')
-        json_str = json.dumps(statistic_mongo_disk, indent=4)
-        f.write(json_str)
-
-def write_case_info_to_js(case_info_obj, output_filename):
     with open(output_filename, 'w') as f:
-        f.write("var case_info = \n")
-        json_str = json.dumps(case_info_obj, indent=4)
+        f.write('var case_info_' + timestamp + ' = \n')
+        json_str = json.dumps(case_information, indent=4)
         f.write(json_str)
 
 # Calculate statistic values from ATOP parsed result
@@ -412,7 +405,7 @@ def write_atop_matrix_to_js(matrix_data, case_information, out_dir):
         matrix_list[matrix_value] = file_open
 
         # write headers
-        file_open.write('var ' + timestamp + '_' + matrix_value + '_' + 'data = \n')
+        file_open.write('var ' + matrix_value + '_data_' + timestamp + ' = \n')
         file_open.write('\"Time,' + pid_name_list_str + padding_str)
 
         for record in range(record_cnt):     # Remove the first record
@@ -458,7 +451,7 @@ def write_mongo_doc_to_js(matrix_data, case_information, filename):
     file_open = open(filename, 'w')
 
     # write headers
-    file_open.write('var ' + timestamp + '_' + 'mongo_document' + '_' + 'data = \n')
+    file_open.write('var ' + 'mongo_document_data_' + timestamp + ' = \n')
     file_open.write('\"Time,' + matrix_name_list_str + padding_str)
 
     record_length_list = []
@@ -647,7 +640,7 @@ def write_compare_list_to_js(log_dir_str, case_information, output_filename):
             result_list["result list"].append(name)
 
     with open(output_filename, 'w') as f:
-        f.write('var ' + timestamp + '_compare_list = \n')
+        f.write('var ' + 'compare_list_' + timestamp + ' = \n')
         json_str = json.dumps(result_list, indent=4)
         f.write(json_str)
     pass
@@ -687,12 +680,23 @@ def parse(log_dir):
     max_min_avg_atop = calc_max_min_avg_atop(atop_matrix)
     max_min_avg_mongo = calc_max_min_avg_mongo(mongo_document)
 
-    pathname_summary_js = os.path.join(output_dir, filename_summary_js)
+    pathname_atop_summary_js = os.path.join(output_dir, filename_atop_summary_js)
     write_summary_to_js(max_min_avg_atop,
-                        max_min_avg_mongo,
-                        mongo_disk,
+                        "atop_statistics",
                         case_info,
-                        pathname_summary_js)
+                        pathname_atop_summary_js)
+
+    pathname_mongo_doc_summary_js = os.path.join(output_dir, filename_mongo_doc_summary_js)
+    write_summary_to_js(max_min_avg_mongo,
+                        "mongo_document_statistics",
+                        case_info,
+                        pathname_mongo_doc_summary_js)
+
+    pathname_mongo_disk_summary_js = os.path.join(output_dir, filename_mongo_disk_summary_js)
+    write_summary_to_js(mongo_disk,
+                        "mongo_disk_statistics",
+                        case_info,
+                        pathname_mongo_disk_summary_js)
 
     # Print to js log file
     write_atop_matrix_to_js(atop_matrix,
